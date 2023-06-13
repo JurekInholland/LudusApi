@@ -32,8 +32,8 @@ class PaddleAnalysis(Analyzer):
     def paddle_analysis(self, frame):
         result = self.model.predict(frame, self.threshold)
         result = list(result)  # Convert to a list
-        boxes = result[0].boxes.xyxy.cuda()
-        scores = result[0].boxes.conf.cuda()
+        boxes = result[0].boxes.xyxy
+        scores = result[0].boxes.conf
         class_ids = result[0].names
 
         detected = False
