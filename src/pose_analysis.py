@@ -3,6 +3,7 @@ import mediapipe as mp
 import numpy as np
 from src.analyzer import Analyzer
 
+
 class PoseAnalysis(Analyzer):
 
     def __init__(self, video_path: str):
@@ -23,7 +24,8 @@ class PoseAnalysis(Analyzer):
             # Process every 5 frames
             if self.current_frame_number % 5 == 0:
                 pose_result = self.pose_analysis(frame)
-                self.pose_states.append({"frame": self.current_frame_number, "stance": pose_result})
+                self.pose_states.append(
+                    {"frame": self.current_frame_number, "stance": pose_result})
 
             self.current_frame_number += 1
 
@@ -36,14 +38,14 @@ class PoseAnalysis(Analyzer):
         b = np.array(b)  # Mid
         c = np.array(c)  # End
 
-        radians = np.arctan2(c[1] - b[1], c[0] - b[0]) - np.arctan2(a[1] - b[1], a[0] - b[0])
+        radians = np.arctan2(c[1] - b[1], c[0] - b[0]) - \
+            np.arctan2(a[1] - b[1], a[0] - b[0])
         angle = np.abs(radians * 180.0 / np.pi)
 
         if angle > 180.0:
             angle = 360 - angle
 
         return angle
-
 
     def pose_analysis(self, frame):
         with self.mp_pose.Pose(static_image_mode=False, min_detection_confidence=0.5,
@@ -75,21 +77,22 @@ class PoseAnalysis(Analyzer):
                              landmarks[self.mp_pose.PoseLandmark.RIGHT_HIP.value].y]
 
                 # Calculate angles
-                angle_hipshoulderelbow_left = self.calculate_angle(hip_left, shoulder_left, elbow_left)
-                angle_hipshoulderelbow_right = self.calculate_angle(hip_right, shoulder_right, elbow_right)
+                angle_hipshoulderelbow_left = self.calculate_angle(
+                    hip_left, shoulder_left, elbow_left)
+                angle_hipshoulderelbow_right = self.calculate_angle(
+                    hip_right, shoulder_right, elbow_right)
 
-                self.mp_drawing.draw_landmarks(frame, results.pose_landmarks, self.mp_pose.POSE_CONNECTIONS)
+                self.mp_drawing.draw_landmarks(
+                    frame, results.pose_landmarks, self.mp_pose.POSE_CONNECTIONS)
 
-                if angle_hipshoulderelbow_left > 50:
+                if angle_hipshoulderelbow_left > 48:
                     if angle_hipshoulderelbow_right < 45:
-                        # print(str(self.current_frame_number) + " Right hit")
-                        stance = "Right hit"
+                        stance = "Right Hit"
                     else:
                         stance = "Stance OK"
-                if angle_hipshoulderelbow_right > 50:
+                if angle_hipshoulderelbow_right > 48:
                     if angle_hipshoulderelbow_left < 45:
-                        # print(self.current_frame_number, "Left Hit")
-                        stance = "Left hit"
+                        stance = "Left Hit"
                     else:
                         stance = "Stance OK"
 
@@ -101,6 +104,9 @@ class PoseAnalysis(Analyzer):
 
     @staticmethod
     def check_for_invalid_pose(previous_states: list) -> bool:
+        """
+        Check if previous states were valid
+        """
         for last_state in previous_states:
             if "None" in last_state["stance"]:
                 return False
@@ -113,7 +119,7 @@ class PoseAnalysis(Analyzer):
         """
         if frame_number < 30:
             return False
-        for i in range(7):
+        for i in range(3):
             if paddle_results[frame_number - (i * 5)]:
                 return True
         return False
@@ -127,29 +133,28 @@ class PoseAnalysis(Analyzer):
         for i, state in enumerate(self.pose_states):
             if i < 5:
                 continue
-            if "hit" not in state["stance"]:
+            if "Hit" not in state["stance"]:
                 continue
 
             diff = state["frame"] - last_result["frame"]
             if diff < self.fps:
-                # print("difference too low: ", diff)
                 continue
 
             if not self.check_for_invalid_pose(self.pose_states[i - 3:i]):
-                print("None in last 3: ", self.get_timecode(state["frame"]))
                 continue
 
             if i < len(self.pose_states) - 3:
-                if not self.check_for_invalid_pose(self.pose_states[i + 1:i + 3]):
-                    print("None in next 3: ", self.get_timecode(state["frame"]))
+                if not self.check_for_invalid_pose(self.pose_states[i + 1:i + 2]):
                     continue
 
             result = state["stance"]
             if not self.was_green_light_on(state["frame"], paddle_results):
-                # print(state["frame"], "invalid hit!")
                 result = "Invalid " + result
+            else:
+                result = "Valid " + result
 
-            results.append({"time_code": self.get_timecode(state["frame"]), "result": result})
+            results.append({"time_code": self.get_timecode(
+                state["frame"]), "result": result})
             last_result = state
 
         return results

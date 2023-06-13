@@ -1,7 +1,10 @@
 import cv2
 
 class Analyzer:
-
+    """
+    Base class for all analyzers.
+    """
+    
     def __init__(self, video_path: str):
         self.cap = cv2.VideoCapture(video_path)
         self.fps = int(self.cap.get(cv2.CAP_PROP_FPS))

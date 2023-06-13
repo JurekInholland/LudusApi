@@ -1,5 +1,7 @@
 import argparse
-from flask import Flask, request
+from datetime import datetime
+
+from flask import Flask, request, send_from_directory
 
 from werkzeug.datastructures import FileStorage
 
@@ -8,6 +10,7 @@ from pathlib import Path
 from src.pose_analysis import PoseAnalysis
 from src.paddle_analysis import PaddleAnalysis
 
+import shortuuid
 app = Flask(__name__)
 
 UPLOAD_FOLDER = Path("uploads")
@@ -16,11 +19,15 @@ ENDPOINT_URL = "/api/analyse"
 
 @app.route('/', methods=['GET'])
 def index():
-    return "LUDUS API is running.", 200
+    """Serve the index HTML"""
+    return send_from_directory('static', 'index.html')
 
 
 @app.route(ENDPOINT_URL, methods=['POST'])
 def analyse():
+    """Analyse the video and return the results.
+
+    """
     if not request.method == "POST":
         return "Method not allowed", 405
 
@@ -28,19 +35,22 @@ def analyse():
     if len(files) != 2:
         return "Two video sources required.", 400
 
-    file_path = Path(UPLOAD_FOLDER, files['file1'].filename)
-    files['file1'].save(file_path)
+    start_time = datetime.now()
+    file_path = Path(UPLOAD_FOLDER, shortuuid.uuid() +
+                     files['poseVideo'].filename)
+    files['poseVideo'].save(file_path)
 
-    paddle_file_path = Path(UPLOAD_FOLDER, files['file2'].filename)
-    files['file2'].save(paddle_file_path)
+    paddle_file_path = Path(
+        UPLOAD_FOLDER, shortuuid.uuid() + files['paddleVideo'].filename)
+    files['paddleVideo'].save(paddle_file_path)
 
-    # result = await analyse_videos(str(file_path), str(paddle_file_path))
     paddle_analysis = PaddleAnalysis(str(paddle_file_path))
     paddle_result = paddle_analysis.analyse()
 
     pose_analysis = PoseAnalysis(str(file_path))
     results = pose_analysis.analyse(paddle_result)
 
+    print("Analysis took: {}".format(datetime.now() - start_time))
     return results, 200
 
 

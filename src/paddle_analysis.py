@@ -9,8 +9,8 @@ class PaddleAnalysis(Analyzer):
         super().__init__(video_path)
         self.paddle_states = []
     
-        self.model = YOLO('../models/paddletracker_v2.2.pt')
-        self.threshold = 0.5
+        self.model = YOLO('models/paddletracker_v2.2.pt')
+        self.threshold = 0.49
 
     def analyse(self) -> dict:
         print("Analysing paddle...")
@@ -39,8 +39,9 @@ class PaddleAnalysis(Analyzer):
         detected = False
 
 
-        for box, score, class_id in zip(boxes, scores, class_ids):
+        for _, score, class_id in zip(boxes, scores, class_ids):
             if class_id == 1:
-                detected = True
+                if score > self.threshold:
+                    detected = True
         
         return [self.current_frame_number, detected]
