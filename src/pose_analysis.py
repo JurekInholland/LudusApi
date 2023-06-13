@@ -1,23 +1,19 @@
 import cv2
 import mediapipe as mp
 import numpy as np
+from src.analyzer import Analyzer
 
-
-class PoseAnalysis:
+class PoseAnalysis(Analyzer):
 
     def __init__(self, video_path: str):
-        self.cap = cv2.VideoCapture(video_path)
-        self.fps = int(self.cap.get(cv2.CAP_PROP_FPS))
-        self.total_frames = int(self.cap.get(cv2.CAP_PROP_FRAME_COUNT))
-
+        super().__init__(video_path)
         self.mp_pose = mp.solutions.pose
-        self.current_frame_number = 0
+        self.mp_drawing = mp.solutions.drawing_utils
+
         self.pose_states = []
 
-    def analyse(self) -> list:
+    def analyse(self, paddle_results: dict) -> list:
         print("Analysing pose...")
-        # with self.mp_pose.Pose(static_image_mode=False, min_detection_confidence=0.5,
-        #                        min_tracking_confidence=0.5) as pose:
         while self.cap.isOpened():
             ret, frame = self.cap.read()
 
@@ -31,7 +27,7 @@ class PoseAnalysis:
 
             self.current_frame_number += 1
 
-        results = self.evaluate_results()
+        results = self.evaluate_results(paddle_results)
         return results
 
     @staticmethod
@@ -48,14 +44,14 @@ class PoseAnalysis:
 
         return angle
 
+
     def pose_analysis(self, frame):
         with self.mp_pose.Pose(static_image_mode=False, min_detection_confidence=0.5,
                                min_tracking_confidence=0.5) as pose:
             stance = "None"
 
             frame.flags.writeable = True
-            frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
-            results = pose.process(frame)
+            results = pose.process(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
 
             # Extract landmarks
             try:
@@ -82,15 +78,17 @@ class PoseAnalysis:
                 angle_hipshoulderelbow_left = self.calculate_angle(hip_left, shoulder_left, elbow_left)
                 angle_hipshoulderelbow_right = self.calculate_angle(hip_right, shoulder_right, elbow_right)
 
-                if angle_hipshoulderelbow_left > 65:
-                    if angle_hipshoulderelbow_right < 65:
-                        print("Right hit")
+                self.mp_drawing.draw_landmarks(frame, results.pose_landmarks, self.mp_pose.POSE_CONNECTIONS)
+
+                if angle_hipshoulderelbow_left > 50:
+                    if angle_hipshoulderelbow_right < 45:
+                        # print(str(self.current_frame_number) + " Right hit")
                         stance = "Right hit"
                     else:
                         stance = "Stance OK"
-                if angle_hipshoulderelbow_right > 65:
-                    if angle_hipshoulderelbow_left < 65:
-                        print("Left Hit")
+                if angle_hipshoulderelbow_right > 50:
+                    if angle_hipshoulderelbow_left < 45:
+                        # print(self.current_frame_number, "Left Hit")
                         stance = "Left hit"
                     else:
                         stance = "Stance OK"
@@ -102,31 +100,28 @@ class PoseAnalysis:
         return stance
 
     @staticmethod
-    def previous_frames_ok(previous_states: list) -> bool:
+    def check_for_invalid_pose(previous_states: list) -> bool:
         for last_state in previous_states:
             if "None" in last_state["stance"]:
                 return False
         return True
 
-    def get_timecode(self, current_frame):
+    @staticmethod
+    def was_green_light_on(frame_number: int, paddle_results: dict) -> bool:
+        """
+        Checks if the green light was on in the last X frames
+        """
+        if frame_number < 30:
+            return False
+        for i in range(7):
+            if paddle_results[frame_number - (i * 5)]:
+                return True
+        return False
 
-        if self.fps == 0:
-            return "00:00:00"
-
-        # Calculate the current time in seconds
-        current_time_in_seconds = current_frame / self.fps
-
-        # Calculate hours, minutes, seconds and frames
-        minutes, seconds = divmod(current_time_in_seconds, 60)
-        hours, minutes = divmod(minutes, 60)
-        frames = current_frame - int(current_time_in_seconds) * self.fps
-
-        # Format timecode as HH:MM:SS:FF
-        timecode = "%02d:%02d:%02d" % (minutes, seconds, frames)
-
-        return timecode
-
-    def evaluate_results(self):
+    def evaluate_results(self, paddle_results: dict):
+        """
+        Iterate over the model results and filter out hit duplicates
+        """
         results = []
         last_result = {"frame": -999, "stance": "None"}
         for i, state in enumerate(self.pose_states):
@@ -137,14 +132,24 @@ class PoseAnalysis:
 
             diff = state["frame"] - last_result["frame"]
             if diff < self.fps:
-                print("difference too low: ", diff)
+                # print("difference too low: ", diff)
                 continue
 
-            if not self.previous_frames_ok(self.pose_states[i - 5:i]):
+            if not self.check_for_invalid_pose(self.pose_states[i - 3:i]):
                 print("None in last 3: ", self.get_timecode(state["frame"]))
                 continue
 
-            results.append({"time_code": self.get_timecode(state["frame"]), "result": state["stance"]})
+            if i < len(self.pose_states) - 3:
+                if not self.check_for_invalid_pose(self.pose_states[i + 1:i + 3]):
+                    print("None in next 3: ", self.get_timecode(state["frame"]))
+                    continue
+
+            result = state["stance"]
+            if not self.was_green_light_on(state["frame"], paddle_results):
+                # print(state["frame"], "invalid hit!")
+                result = "Invalid " + result
+
+            results.append({"time_code": self.get_timecode(state["frame"]), "result": result})
             last_result = state
 
         return results
