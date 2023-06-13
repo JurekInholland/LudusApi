@@ -2,6 +2,9 @@
 
 A proof of concept made for Ludus Alliance by project group 7 in 2023.
 
+![image](https://github.com/JurekInholland/LudusApi/assets/42969112/8f53acb5-e01f-4179-bdfa-f0e05efc5d02)
+
+
 ## Getting started
 ```bash
 #clone this repo
